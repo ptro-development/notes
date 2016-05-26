@@ -1,0 +1,323 @@
+# Docker is process orientated container solution based on LXC so it does not
+# have any init script
+
+# It is not production ready yet, for example if you start /bin/bash it runs
+# under root
+
+# to show docker version
+docker version
+
+# to search centos images
+docker search centos
+
+# pull ubuntu with tag latest
+docker pull ubuntu:latest
+
+# details about image
+docker inspect ubuntu
+
+# to run docker image
+docker run -i -t ubuntu /bin/bash
+
+# after modification of image you can make a snapshot
+docker commit -m "Python was add to the Ubuntu image" -a "ptro" c88b54fedc4f ptro/ubuntu-python-development:v1.1
+
+# preparation to build automatically new image from dockerfile
+mkdir ptro
+cd ptro
+touch dockerfile
+
+[root@localhost ptro]# cat dockerfile
+# This is custom docker build file
+
+FROM ubuntu:latest
+MAINTAINER ptro@centrum.cz
+RUN apt-get update
+RUN apt-get install -y python python-dev
+
+# to run build then
+docker build -t "ubuntu:latest" .
+docker images -t # to see build inbetween containers
+
+# and then you start it again by
+docker run -i -t ubuntu /bin/bash
+
+# to run command in our container as one of
+docker run "ubuntu:latest" /bin/echo "Hello from your container"
+
+# to run in daemon now
+docker run -d "ubuntu:latest" /bin/bash -c "while(true); do /bin/echo Hello from your container; sleep 1; done"
+
+# to check on running process you can
+[root@localhost ptro]# docker ps
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS              PORTS               NAMES
+fb83af93afa8        ubuntu:latest       "/bin/bash -c 'while("   52 seconds ago      Up 51 seconds                           fervent_easle
+
+# to check on output of task above
+docker logs fervent_easley
+
+# to stop the task above
+docker stop fervent_easley
+
+# to run apache2 in container for 60 seconds
+docker run -d -p 8080:80 ubuntu /bin/bash -c "/usr/sbin/service apache2 restart; sleep 60"
+
+# to hit apache2 server in container
+curl http://localhost:8080
+
+# to make snapshost of running or stopped container based on container id
+# (you get it from container) This is basically building by layered commits
+# oppose to building based on docker file
+[root@localhost ptro]# docker images
+REPOSITORY          TAG                 IMAGE ID            CREATED VIRTUAL SIZE
+ubuntu              latest              c88b54fedc4f        42 hours ago
+188 MB
+centos              latest              28e524afdd05        13 days ago
+196.7 MB
+
+[root@localhost ptro]# docker commit fd51ff0d4fb8 centos:updated
+72c677ba22627ee5dda7c12226cf88e4c51b948440f0e41b4bfa28d83f0d83dc
+
+[root@localhost ptro]# docker images
+REPOSITORY          TAG                 IMAGE ID            CREATED
+VIRTUAL SIZE
+centos              updated             72c677ba2262        7 seconds ago
+308.7 MB
+ubuntu              latest              c88b54fedc4f        42 hours ago
+188 MB
+centos              latest              28e524afdd05        13 days ago
+196.7
+
+# to remove image
+docker rmi a8cda2e703b3
+
+# to remove container
+docker rm a8cda2e70000
+
+# to change location of docker directory from /var/lib/docker to
+# /mnt/data/docker edit /etc/sysconfig/docker
+OPTIONS='-g /mnt/data/docker
+service docker restart
+
+# to attach to running container which was started in daemon code to able to
+# execute commands run
+docker attach stoic_wing
+
+# docker structure
+[root@localhost docker]# pwd
+/mnt/data/docker
+[root@localhost docker]# cat repositories-aufs | python -m json.tool
+{
+    "Repositories": {
+        "centos6": {
+            "apache":
+"b34e3f3593327b5ae87d7abc84a9759ed9ce0ea94f6236063294f30359b43056"
+        },
+        "lemonbar/centos6-ssh": {
+            "latest":
+"f826cb900af270cd1ffd8986ca620e6115f1774e370a53eb687a27533de2235d"
+        },
+        "ubuntu": {
+            "latest":
+"c88b54fedc4f348f0b2196e55dea66ede8867ab491de6855ba57e49b9e25ff56"
+        }
+    }
+}
+
+# the file above can be edited to remove <none> containers
+
+# file /mnt/data/docker/containers has countainers in it
+# it has containers dependent on base docker images
+/mnt/data/docker/containers
+
+# you can remove all containers by
+rm -rf /mnt/data/docker/containers/*
+and then
+service docker restart
+
+# to start httpd at startup modify .bashrc
+/sbin/service httpd start
+
+# to get IP address of running container
+docker inspect desperate_cray | grep -i ipaddress
+
+# other way starting httpd by script in docker container
+cd /usr/bin/
+cat > run_httpd_shell << EOF
+#!/bin/bash
+
+rm -rf /run/httpd/*
+exec /usr/sbin/apachectl -D APACHE &
+EOF
+chmod +x /usr/bin/run_httpd_shell
+cd
+cat > .bashrc << EOF
+# start httpd
+/usr/bin/run_httpd_shell
+EOF
+
+# or it can be done more standard way by dockerfile like
+[root@localhost test_2]# cat dockerfile
+# This is custom docker build file
+
+FROM centos:centos6
+MAINTAINER ptro <ptro@centrum.cz>
+
+RUN yum update -y; yum clean all
+RUN yum install -y httpd
+
+ADD testfile.html /var/www/html/index.html
+
+EXPOSE 80
+
+ADD run_httpd_shell /usr/bin/run_httpd_shell
+RUN chmod +x /usr/bin/run_httpd_shell
+
+RUN echo "/usr/bin/run_httpd_shell" >> ~/.bashrc
+
+# to build from docker file above
+docker build -t ptro/centos6:beta1 .
+
+# to push image to docker hub run
+docker login
+
+# then
+docker push ptro/centos6:beta1
+
+# to delete it
+docker rmi ptro/centos6:beta1
+
+# To mount /root/myvolume to running docker /var/volume
+# this way could be web code mounted to right place
+docker run -i -t -v /root/myvolume:/var/volume ptro/centos6:beta1 /bin/bash
+
+# to run docker under different network. This is handy if default docker
+# conflict with some other interface. Start with creating a new bridge
+# interface.
+service docker stop
+ip link add br10 type bridge
+ip addr add 10.10.100.1/24 dev br10
+ip link set br10 up
+docker daemon -b br10 --graph=/mnt/data/docker/
+
+# then start docker
+docker run -i -t ptro/centos6:beta1 /bin/bash
+
+# create container without running it, then start it, and connect to it
+docker create -it --name="my_container" ubuntu:latest /bin/bash
+docker start my_container
+docker attach my_container
+
+# starting docker with name MINE which can be then used
+docker run -i -t --name MINE ptro/centos6:beta1 /bin/bash
+# or docker start MINE
+docker attach MINE
+# and second tty for the same running container
+docker exec -i -t MINE /usr/bin/top
+
+# to see all running containers you can run
+# this is quite handy when you want to remove them so you can script it
+docker ps -a
+
+# to run one of those old container you can start them as
+docker start dreamy_swirles
+
+# to share resources/drive between containers, so we do not need NFS which
+# can be faster for testing code for example
+docker run -d -it -v /data --name DATA1 ptro/centos6:beta1 /bin/bash
+docker run -d -it --volumes-from DATA1 --name DATA2 ptro/centos6:beta1 /bin/bash
+
+# container linking, this exposes environment variables which can be used to
+# communicate. This is much more for scripting then for anything else as you
+# can reach ip of other container without it. It just make it easier.
+docker run -it --name mywebserver ptro/centos6:beta1 /bin/bash
+docker run -it --name mytestcontainer --link mywebserver:localweb ptro/centos6:beta1 /bin/bash
+env
+
+# dynamic mapping of the ports can by done by option -P, so you can run
+# multiple instances of image as containers and they will atomaticaly get new
+# port mapped to another port on host machine. This way you can easily
+# loadbalance among them for example.
+docker run -i -t -d -P ptro/centos6:beta1 /bin/bash
+
+# copy file out of docker container
+docker cp desperate_carson:/etc/yum.conf /tmp/
+
+# to see changes to previous files of image you can run diff
+[root@localhost ~]# docker diff desperate_carson
+C /tmp
+C /var
+C /var/lock
+C /var/lock/subsys
+A /var/lock/subsys/httpd
+C /var/log
+C /var/log/httpd
+A /var/log/httpd/access_log
+A /var/log/httpd/error_log
+C /var/run
+C /var/run/httpd
+A /var/run/httpd/httpd.pid
+
+# to show events happening on docker service you can run, so will start of
+# containers etc.
+docker events
+
+# even better you can look at history of image by
+[root@localhost ~]# docker history ptro/centos6:beta1
+IMAGE               CREATED             CREATED BY
+SIZE                COMMENT
+f01eb6d65995        27 hours ago        /bin/sh -c echo
+"/usr/bin/run_httpd_shell" >>   201 B               7911188a8909        27 hours ago        /bin/sh -c chmod +x
+/usr/bin/run_httpd_shell    59 B                
+112a9c5fd9c3        27 hours ago        /bin/sh -c #(nop) ADD file:9bde474bdd22c0dc01   59 B                
+822dab8fc896        27 hours ago        /bin/sh -c #(nop) EXPOSE 80/tcp 0 B                 
+297616ded925        27 hours ago        /bin/sh -c #(nop) ADD file:3cbba0b9c6912135c9   57 B                
+b6b54658e3bd        32 hours ago        /bin/sh -c yum install -y httpd 110.6 MB            
+d672de3a1cb0        32 hours ago        /bin/sh -c yum update -y; yum clean all         26.61 MB            
+49142c082635        32 hours ago        /bin/sh -c #(nop) MAINTAINER ptro <ptro@centr   0 B                 
+2f96ee8baf17        2 weeks ago         /bin/sh -c #(nop) CMD ["/bin/bash"] 0 B                 
+5a333563d537        2 weeks ago         /bin/sh -c #(nop) LABEL name=CentOS Base Imag   0 B                 
+143ae7eb1295        2 weeks ago         /bin/sh -c #(nop) ADD file:ae8f506cbd1f016c67   228.9 MB            
+fa5be2806d4c        7 months ago        /bin/sh -c #(nop) MAINTAINER The CentOS Proje   0 B 
+
+# general info
+docker info
+
+# to see running processes in docker
+docker top myweb1
+
+# to stop container immediately
+docker kill myweb1
+
+# to pause container
+docker pause myweb1
+docker unpause myweb1
+
+# export container to tar file
+docker stop myweb1
+docker export myweb1 > myweb1.tar
+
+# and we can import it
+docker load < myweb1.tar
+
+# To optimise build of container to get rif of most inbetween containers, notice &&
+# at the end of lines
+[root@localhost test_4]# cat dockerfile
+# This is custom docker build file
+
+FROM centos:centos6
+MAINTAINER ptro <ptro@centrum.cz>
+RUN yum update -y; yum clean all && yum install -y httpd && run_httpd_shell /usr/bin/run_httpd_shell && chmod +x /usr/bin/run_httpd_shell && echo "/usr/bin/run_httpd_shell" >> ~/.bashrc
+
+# you can pass dns to docker
+docker run -it --dns=8.8.8.8 --dns-search="mydomain.local"
+
+# to detach form running container bash do
+CTRL+p CTRL+q
+
+# nginx loadbalancing
+docker run --name webtest1 -p 8081:80 -v /root/workspace/ptro/test_5/docker/dockerwww:/var/www/html -idt ptro/centos6:beta1 /bin/bash
+docker run --name webtest2 -p 8082:80 -v /root/workspace/ptro/test_5/docker/dockerwww:/var/www/html -idt ptro/centos6:beta1 /bin/bash
+docker run --name loadbalancer -p 8080:8080 -idt ptro/nginx-loadbalancer:ver_1 /bin/bash
+
+# passing environment variable to docker with -e parameter
