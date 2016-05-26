@@ -1,0 +1,76 @@
+####
+ON "Master node"
+####
+
+sudo chmod g+w /var/log
+# ansible was added to root group
+
+[ansible@master ~]$ cat /etc/sudoers.d/ansible 
+ansible ALL=(ALL) NOPASSWD: ALL
+
+[ansible@master ~]$ ansible apacheweb -m ping
+client001 | success >> {
+    "changed": false, 
+    "ping": "pong"
+}
+
+# to list facts about local system
+ansible local -m setup
+# write it to directory file
+ansible local -m setup --tree /tmp/facts
+
+# to list facts about local host ipv4
+ansible local -m setup -a 'filter=ans*ipv4*'
+
+# help about ansible setup module
+ansible-doc setup
+
+# to install lynks on apachewen group of servers
+ansible apacheweb -s -m shell -a 'yum -y install lynx'
+ansible local -s -m yum -a 'pkg=lynx state=installed update_cache=true'
+
+# to run playebook (-s for sudo)
+ansible-playbook -s apacheweb.yml
+
+# to check syntax, it also shows which commands would be necessary to run to fulfill playbook
+ansible-playbook webserver.yml --check
+
+# to create encrypted yml
+ansible-vault create secure.yum
+# to edit it
+ansible-vault edit secure.yum
+# to change password
+ansible-vault rekye secure.yum
+# to encrypt not encryted file
+ansible-vault encrypt accounts.yum
+# to decrypt file
+ansible-vault decrypt accounts.yum
+
+# when we want to use it
+ansible-playbook secure.yum --ask-pass
+ansible-playbook secure.yum --vault-password-file=VAULT_PASSWORD_FILE
+
+# to run just tagged part of playbook or skip some
+ansible-playbook tags.yml --tags="verification"
+ansible-playbook tags.yml --skip-tags="packages"
+
+# to start from specific task
+ansible-playbook start.yml --start-at-task='Remove lists of users'
+
+# or control ste by step
+ansible-playbook start.yml --step
+
+# passing variables to playbook
+ansible-playbook fromcommandline.yml --extra-vars "hosts=all user=ansible"
+
+# find properties
+ansible python_developer_vim_hosts -m file -a 'path=/etc/fstab'
+
+# create directory
+ansible python_developer_vim_hosts -s -m file -a 'path=/tmp/etc state=directory mode=0700 owner=root'
+
+# to copy file on remote machine
+ansible python_developer_vim_hosts -s -m copy -a 'src=/etc/fstab dest=/tmp/etc/fstab'
+
+# to remove deirectory
+ansible python_developer_vim_hosts -s -m command -a 'rm -rf /tmp/etc/'
